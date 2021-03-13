@@ -6,6 +6,7 @@ using Amazon.Runtime;
 using Ductus.FluentDocker.Builders;
 using Ductus.FluentDocker.Commands;
 using Ductus.FluentDocker.Services;
+using Ductus.FluentDocker.Services.Impl;
 using Microsoft.Extensions.Logging;
 using Xunit.Abstractions;
 
@@ -57,12 +58,20 @@ namespace Logicality.AWS.Lambda.TestHost.LocalStack
                 nameof(SimpleLambdaFunction.FunctionHandler)));
             var lambdaTestHost = await LambdaTestHost.Start(settings);
 
+            /*var lambdaForwardUrl = new UriBuilder(lambdaTestHost.ServiceUrl)
+            {
+                Host = Environment.OSVersion.Platform == PlatformID.Win32NT
+                    ? "host.docker.internal"
+                    : "172.17.0.1"
+            };*/
+
             var lambdaForwardUrl = new UriBuilder(lambdaTestHost.ServiceUrl)
             {
                 Host = "host.docker.internal"
-            }.ToString();
-            lambdaForwardUrl = lambdaForwardUrl.Remove(lambdaForwardUrl.Length - 1);
+            };
 
+            var url = lambdaForwardUrl.ToString();
+            url = url.Remove(url.Length - 1);
 
             var environment = new List<string>
             {
@@ -71,14 +80,14 @@ namespace Logicality.AWS.Lambda.TestHost.LocalStack
             };
             if (setLambdaFallbackUrl)
             {
-                environment.Add($"LAMBDA_FALLBACK_URL={lambdaForwardUrl}");
-                outputHelper.WriteLine($"Using LAMBDA_FALLBACK_URL={lambdaForwardUrl}");
+                environment.Add($"LAMBDA_FALLBACK_URL={url}");
+                outputHelper.WriteLine($"Using LAMBDA_FALLBACK_URL={url}");
             }
 
             if (setLambdaForwardUrl)
             {
-                environment.Add($"LAMBDA_FORWARD_URL={lambdaForwardUrl}");
-                outputHelper.WriteLine($"Using LAMBDA_FORWARD_URL={lambdaForwardUrl}");
+                environment.Add($"LAMBDA_FORWARD_URL={url}");
+                outputHelper.WriteLine($"Using LAMBDA_FORWARD_URL={url}");
             }
 
             var localStackBuilder = new Builder()
@@ -86,6 +95,7 @@ namespace Logicality.AWS.Lambda.TestHost.LocalStack
                 .WithName($"lambda-testhost-localstack-{Guid.NewGuid()}")
                 .UseImage("localstack/localstack:latest")
                 .WithEnvironment(environment.ToArray())
+                .HostIpMapping("host.docker.internal", "172.17.0.1")
                 .ExposePort(0, ContainerPort)
                 .WaitForPort($"{ContainerPort}/tcp", 10000, "127.0.0.1");
 
