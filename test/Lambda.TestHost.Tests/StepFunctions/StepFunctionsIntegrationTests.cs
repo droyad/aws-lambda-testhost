@@ -124,8 +124,7 @@ namespace Logicality.AWS.Lambda.TestHost.StepFunctions
                 .UseContainer()
                 .WithName("lambda-testhost-stepfunctions")
                 .UseImage("amazon/aws-stepfunctions-local:latest")
-                .WithEnvironment(
-                    $"LAMBDA_ENDPOINT={url}")
+                .WithEnvironment($"LAMBDA_ENDPOINT={url}")
                 .ReuseIfExists()
                 .ExposePort(Port, ContainerPort)
                 .WaitForPort($"{ContainerPort}/tcp", 10000, "127.0.0.1")

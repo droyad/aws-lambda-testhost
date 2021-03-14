@@ -11,7 +11,6 @@ docker run --rm -it ^
  -v %cd%/temp:/repo/temp ^
  -e FEEDZ_LOGICALITY_API_KEY=%FEEDZ_LOGICALITY_API_KEY% ^
  -e NUGET_PACKAGES=/repo/temp/nuget-packages ^
- --network host ^
  -e BUILD_NUMBER=%GITHUB_RUN_NUMBER% ^
  aws-lambda-testhost-build ^
  dotnet run -p build/Build.csproj -c Release -- %*
