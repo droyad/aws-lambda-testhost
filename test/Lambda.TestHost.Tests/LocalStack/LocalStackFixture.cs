@@ -1,14 +1,10 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Linq;
-using System.Net;
-using System.Net.Sockets;
 using System.Threading.Tasks;
 using Amazon.Runtime;
 using Ductus.FluentDocker.Builders;
 using Ductus.FluentDocker.Commands;
 using Ductus.FluentDocker.Services;
-using Ductus.FluentDocker.Services.Impl;
 using Microsoft.Extensions.Logging;
 using Xunit.Abstractions;
 
@@ -41,9 +37,14 @@ namespace Logicality.AWS.Lambda.TestHost.LocalStack
 
         public static async Task<LocalStackFixture> Create(ITestOutputHelper outputHelper)
         {
+            var webHostUrl = FixtureUtils.IsRunningInContainer
+                ? FixtureUtils.GetLocalIPAddress()
+                : "127.0.0.1";
+
             // Runs a the Lambda TestHost (invoke api) on a random port
             var settings = new LambdaTestHostSettings(() => new TestLambdaContext())
             {
+                WebHostUrl = $"http://{webHostUrl}:0",
                 ConfigureLogging = logging =>
                 {
                     logging.AddXUnit(outputHelper);
@@ -56,23 +57,7 @@ namespace Logicality.AWS.Lambda.TestHost.LocalStack
                 nameof(SimpleLambdaFunction.FunctionHandler)));
             var lambdaTestHost = await LambdaTestHost.Start(settings);
 
-            var lambdaForwardUrlBuilder = new UriBuilder(lambdaTestHost.ServiceUrl);
-
-            var isRunningInContainer = IsRunningInContainer();
-            if (isRunningInContainer)
-            {
-                var localIpAddress = GetLocalIPAddress();
-                lambdaForwardUrlBuilder.Host = localIpAddress;
-            }
-            else
-            {
-                lambdaForwardUrlBuilder.Host = "host.docker.internal";
-            }
-
-            var lambdaForwardUrl = lambdaForwardUrlBuilder.ToString();
-            //  Remove trailing slash as localstack does string concatenation resulting in "//".
-            lambdaForwardUrl = lambdaForwardUrl.Remove(lambdaForwardUrl.Length - 1);
-            outputHelper.WriteLine($"Using LAMBDA_FALLBACK_URL={lambdaForwardUrl}");
+            var lambdaInvokeEndpoint = FixtureUtils.GetLambdaInvokeEndpoint(outputHelper, lambdaTestHost);
 
             var localStackBuilder = new Builder()
                 .UseContainer()
@@ -81,7 +66,7 @@ namespace Logicality.AWS.Lambda.TestHost.LocalStack
                 .WithEnvironment(
                     "SERVICES=lambda",
                     "LS_LOG=debug",
-                    $"LAMBDA_FORWARD_URL={lambdaForwardUrl}")
+                    $"LAMBDA_FORWARD_URL={lambdaInvokeEndpoint}")
                 .ExposePort(0, ContainerPort);
             var localStack = localStackBuilder.Build().Start();
 
@@ -94,7 +79,7 @@ namespace Logicality.AWS.Lambda.TestHost.LocalStack
 
             var localstackServiceUrl = new UriBuilder($"http://localhost:{exposedPort}");
 
-            if (isRunningInContainer)
+            if (FixtureUtils.IsRunningInContainer)
             {
                 var host = localStack
                     .GetConfiguration()
@@ -108,7 +93,7 @@ namespace Logicality.AWS.Lambda.TestHost.LocalStack
             outputHelper.WriteLine($"Using localstackServiceUrl={localstackServiceUrl}");
             return new LocalStackFixture(lambdaTestHost, localStack, localstackServiceUrl.Uri, outputHelper);
         }
-
+       
         public async ValueTask DisposeAsync()
         {
             await LambdaTestHost.DisposeAsync();
@@ -131,35 +116,6 @@ namespace Logicality.AWS.Lambda.TestHost.LocalStack
 
             _localStack.RemoveOnDispose = true;
             _localStack.Dispose();
-        }
-
-        public static bool IsRunningInContainer()
-        {
-            /*
-            There are two scenarios where tests can being run:
-            1. On docker host (i.e. development time).
-            2. In a container.
-
-            Depending on which will set determin the networking model and 
-            host names.
-
-            */
-
-            var env = Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER");
-            return env != null && env.Equals("true", StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static string GetLocalIPAddress()
-        {
-            var host = Dns.GetHostEntry(Dns.GetHostName());
-            foreach (var ip in host.AddressList)
-            {
-                if (ip.AddressFamily == AddressFamily.InterNetwork)
-                {
-                    return ip.ToString();
-                }
-            }
-            throw new Exception("No network adapters with an IPv4 address in the system!");
         }
     }
 }

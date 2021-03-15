@@ -6,8 +6,10 @@ using Amazon.StepFunctions;
 using Amazon.StepFunctions.Model;
 using Ductus.FluentDocker.Builders;
 using Ductus.FluentDocker.Services;
+using Microsoft.Extensions.Logging;
 using Xunit;
 using Xunit.Abstractions;
+using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 namespace Logicality.AWS.Lambda.TestHost.StepFunctions
 {
@@ -15,7 +17,7 @@ namespace Logicality.AWS.Lambda.TestHost.StepFunctions
     {
         private readonly ITestOutputHelper _outputHelper;
         private LambdaTestHost _lambdaTestHost;
-        private IContainerService _containerService;
+        private IContainerService _stepFunctionsLocal;
         private Uri _stepFunctionsServiceUrl;
         private const int ContainerPort = 8083;
         public const int Port = 8083;
@@ -106,38 +108,64 @@ namespace Logicality.AWS.Lambda.TestHost.StepFunctions
 
         public async Task InitializeAsync()
         {
-            var settings = new LambdaTestHostSettings(() => new TestLambdaContext());
+            var webHostUrl = FixtureUtils.IsRunningInContainer
+                ? FixtureUtils.GetLocalIPAddress()
+                : "127.0.0.1";
+
+            var settings = new LambdaTestHostSettings(() => new TestLambdaContext())
+            {
+                WebHostUrl = $"http://{webHostUrl}:0",
+                ConfigureLogging = logging =>
+                {
+                    logging.AddXUnit(_outputHelper);
+                    logging.SetMinimumLevel(LogLevel.Debug);
+                }
+            };
             settings.AddFunction(new LambdaFunctionInfo(
                 nameof(SimpleLambdaFunction),
                 typeof(SimpleLambdaFunction),
                 nameof(SimpleLambdaFunction.FunctionHandler)));
             _lambdaTestHost = await LambdaTestHost.Start(settings);
 
-            var url = new UriBuilder(_lambdaTestHost.ServiceUrl)
-            {
-                Host = Environment.OSVersion.Platform == PlatformID.Win32NT
-                    ? "host.docker.internal"
-                    : "172.17.0.1"
-            };
+            var lambdaInvokeEndpoint = FixtureUtils.GetLambdaInvokeEndpoint(_outputHelper, _lambdaTestHost);
 
-            _containerService = new Builder()
+            _stepFunctionsLocal = new Builder()
                 .UseContainer()
                 .WithName("lambda-testhost-stepfunctions")
                 .UseImage("amazon/aws-stepfunctions-local:latest")
-                .WithEnvironment($"LAMBDA_ENDPOINT={url}")
+                .WithEnvironment($"LAMBDA_ENDPOINT={lambdaInvokeEndpoint}")
                 .ReuseIfExists()
-                .ExposePort(Port, ContainerPort)
-                .WaitForPort($"{ContainerPort}/tcp", 10000, "127.0.0.1")
+                .ExposePort(0, ContainerPort)
                 .Build()
                 .Start();
 
-            _stepFunctionsServiceUrl = new Uri($"http://localhost:{Port}");
+            var exposedPort = _stepFunctionsLocal
+                .GetConfiguration()
+                .NetworkSettings
+                .Ports.First()
+                .Value.First()
+                .HostPort;
+
+            var stepFunctionsServiceUrl = new UriBuilder($"http://localhost:{exposedPort}");
+
+            if (FixtureUtils.IsRunningInContainer)
+            {
+                var host = _stepFunctionsLocal
+                    .GetConfiguration()
+                    .NetworkSettings
+                    .IPAddress;
+
+                stepFunctionsServiceUrl.Host = host;
+                stepFunctionsServiceUrl.Port = ContainerPort;
+            }
+
+            _stepFunctionsServiceUrl = stepFunctionsServiceUrl.Uri;
         }
 
         public Task DisposeAsync()
         {
-            _containerService.RemoveOnDispose = true;
-            _containerService.Dispose();
+            _stepFunctionsLocal.RemoveOnDispose = true;
+            _stepFunctionsLocal.Dispose();
             return Task.CompletedTask;
         }
     }
