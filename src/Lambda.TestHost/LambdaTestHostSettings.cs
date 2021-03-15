@@ -11,11 +11,11 @@ namespace Logicality.AWS.Lambda.TestHost
         private readonly Dictionary<string, LambdaFunctionInfo> _functions = new Dictionary<string, LambdaFunctionInfo>();
 
         /// <summary>
-        /// The URL the lambda test host will listen on. Default value is http://127.0.0.1:0
+        /// The URL the lambda test host will listen on. Default value is http://+:0
         /// which will listen on a random free port. To get the URL to invoke lambdas, use
         /// LambdaTestHost.ServiceUrl.
         /// </summary>
-        public string WebHostUrl { get; set; } = "http://127.0.0.1:0";
+        public string WebHostUrl { get; set; } = "http://+:0";
 
         public LambdaTestHostSettings(Func<ILambdaContext> createContext)
         {

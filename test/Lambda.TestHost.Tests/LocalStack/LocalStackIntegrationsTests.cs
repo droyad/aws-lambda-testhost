@@ -20,60 +20,10 @@ namespace Logicality.AWS.Lambda.TestHost.LocalStack
             _outputHelper = outputHelper;
         }
 
-        [Fact(Skip="Exploration - expected to fail")]
-        public async Task Without_specifying_lambda_service_and_with_LAMBDA_FALLBACK_URL_then_should_invoke()
-        {
-            await using var fixture = await LocalStackFixture.Create(_outputHelper, "null", setLambdaFallbackUrl: true);
-
-            // 1. Create the StepFunctions Client
-            var lambdaClient = new AmazonLambdaClient(fixture.AWSCredentials, new AmazonLambdaConfig
-            {
-                ServiceURL = fixture.ServiceUrl.ToString()
-            });
-
-            var invokeRequest = new InvokeRequest
-            {
-                FunctionName = "simple",
-                Payload = "{\"Data\":\"Bar\"}",
-            };
-
-            var invokeResponse = await lambdaClient.InvokeAsync(invokeRequest);
-
-            invokeResponse.HttpStatusCode.ShouldBe(HttpStatusCode.OK);
-            invokeResponse.FunctionError.ShouldBeNullOrEmpty();
-            var responsePayload = Encoding.UTF8.GetString(invokeResponse.Payload.ToArray());
-            responsePayload.ShouldStartWith("{\"Reverse\":\"raB\"}");
-        }
-
-        [Fact(Skip = "Exploration - expected to fail")]
-        public async Task Wih_lambda_service_and_LAMBDA_FALLBACK_URL_then_should_invoke()
-        {
-            await using var fixture = await LocalStackFixture.Create(_outputHelper, "lambda", setLambdaFallbackUrl: true);
-
-            // 1. Create the StepFunctions Client
-            var lambdaClient = new AmazonLambdaClient(fixture.AWSCredentials, new AmazonLambdaConfig
-            {
-                ServiceURL = fixture.ServiceUrl.ToString()
-            });
-            var functionInfo = fixture.LambdaTestHost.Settings.Functions.First().Value;
-            var invokeRequest = new InvokeRequest
-            {
-                FunctionName = functionInfo.Name,
-                Payload = "{\"Data\":\"Bar\", \"a\" : \"b\" }",
-            };
-
-            var invokeResponse = await lambdaClient.InvokeAsync(invokeRequest);
-
-            invokeResponse.HttpStatusCode.ShouldBe(HttpStatusCode.OK);
-            invokeResponse.FunctionError.ShouldBeNullOrEmpty();
-            var responsePayload = Encoding.UTF8.GetString(invokeResponse.Payload.ToArray());
-            responsePayload.ShouldStartWith("{\"Reverse\":\"raB\"}");
-        }
-
         [Fact]
         public async Task With_lambda_service_and_LAMBDA_FORWARD_URL_then_should_invoke() 
         {
-            await using var fixture = await LocalStackFixture.Create(_outputHelper, "lambda", setLambdaForwardUrl: true);
+            await using var fixture = await LocalStackFixture.Create(_outputHelper);
 
             // 1. Arrange: Create the Lambda Client
             var lambdaClient = new AmazonLambdaClient(fixture.AWSCredentials, new AmazonLambdaConfig
