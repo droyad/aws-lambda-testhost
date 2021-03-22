@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Linq;
 using System.Threading.Tasks;
+using Amazon.Lambda;
 using Amazon.Runtime;
+using Amazon.SQS;
 using Ductus.FluentDocker.Builders;
 using Ductus.FluentDocker.Commands;
 using Ductus.FluentDocker.Services;
@@ -26,14 +28,29 @@ namespace Logicality.AWS.Lambda.TestHost.LocalStack
             _localStack = localStack;
             _outputHelper = outputHelper;
 
-            AWSCredentials =  new BasicAWSCredentials("not", "used");
+            AWSCredentials = new BasicAWSCredentials("not", "used");
+
+            LambdaClient = new AmazonLambdaClient(AWSCredentials, new AmazonLambdaConfig
+            {
+                ServiceURL = ServiceUrl.ToString()
+            });
+
+            SQSClient = new AmazonSQSClient(AWSCredentials, new AmazonSQSConfig
+            {
+                ServiceURL = ServiceUrl.ToString()
+            });
         }
-        
+
+
         public Uri ServiceUrl { get; }
 
         public LambdaTestHost LambdaTestHost { get; }
 
         public AWSCredentials AWSCredentials { get; }
+
+        public IAmazonLambda LambdaClient { get; }
+
+        public IAmazonSQS SQSClient { get; }
 
         public static async Task<LocalStackFixture> Create(ITestOutputHelper outputHelper)
         {
@@ -55,6 +72,10 @@ namespace Logicality.AWS.Lambda.TestHost.LocalStack
                 nameof(SimpleLambdaFunction),
                 typeof(SimpleLambdaFunction),
                 nameof(SimpleLambdaFunction.FunctionHandler)));
+            settings.AddFunction(new LambdaFunctionInfo(
+                nameof(SQSLambdaFunction),
+                typeof(SQSLambdaFunction),
+                nameof(SQSLambdaFunction.FunctionHandler)));
             var lambdaTestHost = await LambdaTestHost.Start(settings);
 
             var lambdaInvokeEndpoint = FixtureUtils.GetLambdaInvokeEndpoint(outputHelper, lambdaTestHost);
@@ -64,7 +85,7 @@ namespace Logicality.AWS.Lambda.TestHost.LocalStack
                 .WithName($"lambda-testhost-localstack-{Guid.NewGuid()}")
                 .UseImage("localstack/localstack:latest")
                 .WithEnvironment(
-                    "SERVICES=lambda",
+                    "SERVICES=lambda,sqs",
                     "LS_LOG=debug",
                     $"LAMBDA_FORWARD_URL={lambdaInvokeEndpoint}")
                 .ExposePort(0, ContainerPort);
